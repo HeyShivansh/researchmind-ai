@@ -1,0 +1,73 @@
+# =============================================================================
+# ResearchMind AI — Local Development Environment
+# =============================================================================
+# Spin up infrastructure services:
+#   docker compose up -d
+#
+# Tear down:
+#   docker compose down
+#
+# Tear down and delete volumes:
+#   docker compose down -v
+# =============================================================================
+
+name: researchmind
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — Primary relational database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: researchmind-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-researchmind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-researchmind}
+      POSTGRES_DB: ${POSTGRES_DB:-researchmind}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-researchmind} -d ${POSTGRES_DB:-researchmind}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - researchmind-network
+
+  # ---------------------------------------------------------------------------
+  # Qdrant — Vector database for semantic search
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: researchmind-qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"   # REST API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      # Disable telemetry for local development
+      QDRANT__TELEMETRY__DISABLED: "true"
+    networks:
+      - researchmind-network
+
+# ---------------------------------------------------------------------------
+# Networking
+# ---------------------------------------------------------------------------
+networks:
+  researchmind-network:
+    name: researchmind-network
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Persistent storage
+# ---------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    name: researchmind-postgres-data
+  qdrant_data:
+    name: researchmind-qdrant-data
