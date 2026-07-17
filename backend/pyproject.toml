@@ -20,6 +20,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "black>=26.5.1",
+    "httpx>=0.28.0",
     "mypy>=2.1.0",
     "pytest>=9.1.1",
     "ruff>=0.15.20",
