@@ -9,7 +9,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
@@ -64,6 +64,14 @@ class Paper(Base):
         default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    # -- Relationship to chunks ----------------------------------------------
+    chunks: Mapped[list["PaperChunk"]] = relationship(
+        "PaperChunk",
+        back_populates="paper",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     def __repr__(self) -> str:

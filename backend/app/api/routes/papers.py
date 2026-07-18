@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
 from app.dependencies import get_paper_service
 from app.models.paper import Paper
@@ -64,3 +64,34 @@ def get_paper(
     Retrieve a single paper by its unique identifier.
     """
     return service.get_paper(paper_id)
+
+
+@router.post(
+    "/upload",
+    response_model=PaperResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def upload_paper(
+    file: UploadFile = File(..., description="PDF file to upload"),
+    title: str | None = Form(default=None, description="Paper title"),
+    doi: str | None = Form(default=None, description="Digital Object Identifier"),
+    publication_year: int | None = Form(default=None, description="Year of publication"),
+    abstract: str | None = Form(default=None, description="Paper abstract"),
+    service: PaperService = Depends(get_paper_service),
+) -> Paper:
+    """
+    Upload a PDF and create a Paper record.
+
+    The file is validated (extension, magic bytes, size), saved to
+    the storage layer, and a database record is created.  If either
+    step fails the operation is rolled back atomically.
+    """
+    file_bytes = file.file.read()
+    return service.upload_paper(
+        file_bytes,
+        file.filename or "upload.pdf",
+        title=title,
+        doi=doi,
+        publication_year=publication_year,
+        abstract=abstract,
+    )

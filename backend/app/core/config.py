@@ -1,10 +1,12 @@
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application-level settings loaded from environment variables / .env file."""
+
+    model_config = SettingsConfigDict(env_file=".env")
 
     # -- App metadata -----------------------------------------------------------
     APP_NAME: str = "ResearchMind AI"
@@ -38,8 +40,32 @@ class Settings(BaseSettings):
     DB_POOL_RECYCLE: int = 1800  # 30 minutes
     DB_ECHO: bool = False
 
-    class Config:
-        env_file = ".env"
+    # -- Storage -----------------------------------------------------------------
+    STORAGE_ROOT: str = "storage"
+    PAPERS_DIRECTORY: str = "papers"
+    MAX_UPLOAD_SIZE_MB: int = 50
+
+    # -- Chunking ----------------------------------------------------------------
+    DEFAULT_CHUNK_SIZE: int = 500
+    DEFAULT_CHUNK_OVERLAP: int = 50
+
+    # -- Embeddings --------------------------------------------------------------
+    EMBEDDING_PROVIDER: str = "gemini"
+    EMBEDDING_MODEL: str = "text-embedding-004"
+    EMBEDDING_DIMENSION: int = 768
+    GEMINI_API_KEY: str = ""
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+
+    # -- Vector store (Qdrant) ---------------------------------------------------
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str = ""
+    QDRANT_COLLECTION_NAME: str = "researchmind"
+    QDRANT_VECTOR_DIMENSION: int = 768
+
+    # -- Hybrid retrieval --------------------------------------------------------
+    HYBRID_SEMANTIC_TOP_K: int = 10
+    HYBRID_KEYWORD_TOP_K: int = 10
+    HYBRID_FUSION_K: int = 60
 
 
 @lru_cache
