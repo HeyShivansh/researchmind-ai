@@ -47,11 +47,11 @@ class TestEmbeddingResult:
         """Verify all fields are stored as passed."""
         result = EmbeddingResult(
             vector=[0.5, -0.1, 0.8, 0.0],
-            model_name="text-embedding-004",
+            model_name="gemini-embedding-001",
             dimension=4,
         )
         assert result.vector == [0.5, -0.1, 0.8, 0.0]
-        assert result.model_name == "text-embedding-004"
+        assert result.model_name == "gemini-embedding-001"
         assert result.dimension == 4
 
     def test_no_text_field(self) -> None:

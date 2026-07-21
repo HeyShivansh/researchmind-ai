@@ -21,6 +21,7 @@ from app.processing import DocumentProcessor
 from app.repositories.chunk_repository import ChunkRepository
 from app.retrieval import RetrievalService
 from app.services.chunk_persistence_service import ChunkPersistenceService
+from app.services.indexing_service import DocumentIndexingService
 from app.services.paper_service import PaperService
 from app.storage.file_storage import FileStorage
 from app.vectorstore import QdrantService
@@ -270,6 +271,34 @@ def get_hybrid_retrieval_service(
     )
 
 
+def get_indexing_service(
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
+    qdrant_service: QdrantService = Depends(get_qdrant_service),
+) -> DocumentIndexingService:
+    """
+    FastAPI dependency that provides a ``DocumentIndexingService`` instance.
+
+    Wires together the embedding service and Qdrant service for indexing
+    document chunks into the vector store.
+
+    Parameters
+    ----------
+    embedding_service : EmbeddingService
+        Service obtained from ``get_embedding_service``.
+    qdrant_service : QdrantService
+        Service obtained from ``get_qdrant_service``.
+
+    Returns
+    -------
+    DocumentIndexingService
+        An indexing service instance wired to the provided dependencies.
+    """
+    return DocumentIndexingService(
+        embedding_service=embedding_service,
+        qdrant_service=qdrant_service,
+    )
+
+
 def get_paper_service(
     db: Session = Depends(get_db),
     file_storage: FileStorage = Depends(get_file_storage),
@@ -278,6 +307,7 @@ def get_paper_service(
     chunk_persistence_service: ChunkPersistenceService = Depends(
         get_chunk_persistence_service
     ),
+    indexing_service: DocumentIndexingService = Depends(get_indexing_service),
 ) -> PaperService:
     """
     FastAPI dependency that provides a ``PaperService`` instance.
@@ -294,6 +324,8 @@ def get_paper_service(
         Chunker obtained from ``get_chunker``.
     chunk_persistence_service : ChunkPersistenceService
         Chunk persistence service obtained from ``get_chunk_persistence_service``.
+    indexing_service : DocumentIndexingService
+        Indexing service obtained from ``get_indexing_service``.
 
     Returns
     -------
@@ -306,4 +338,5 @@ def get_paper_service(
         document_processor=document_processor,
         chunker=chunker,
         chunk_persistence_service=chunk_persistence_service,
+        indexing_service=indexing_service,
     )

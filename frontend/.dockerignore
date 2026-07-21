@@ -1,0 +1,15 @@
+# =============================================================================
+# ResearchMind AI — Frontend .dockerignore
+# =============================================================================
+# Keep the build context small to avoid Docker daemon timeouts.
+# =============================================================================
+
+.git
+.gitignore
+node_modules
+.next
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+next-env.d.ts

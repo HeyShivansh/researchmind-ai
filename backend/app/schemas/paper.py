@@ -99,6 +99,20 @@ class PaperResponse(PaperBase):
     ----------
     id : UUID
         Unique identifier assigned by the database.
+    filename : str or None
+        Original uploaded filename.
+    file_size : int or None
+        File size in bytes.
+    page_count : int or None
+        Number of pages in the PDF.
+    chunk_count : int or None
+        Number of text chunks extracted.
+    status : str
+        Processing status ("processing", "ready", "error").
+    author : str or None
+        Author name extracted from PDF metadata.
+    subject : str or None
+        Subject extracted from PDF metadata.
     created_at : datetime
         Timestamp of when the record was created.
     updated_at : datetime
@@ -106,6 +120,13 @@ class PaperResponse(PaperBase):
     """
 
     id: UUID
+    filename: str | None
+    file_size: int | None
+    page_count: int | None
+    chunk_count: int | None
+    status: str
+    author: str | None
+    subject: str | None
     created_at: datetime
     updated_at: datetime
 

@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Generator
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from qdrant_client import QdrantClient
@@ -28,6 +28,7 @@ from app.processing import DocumentProcessor
 from app.repositories.chunk_repository import ChunkRepository
 from app.retrieval import RetrievalService
 from app.services.chunk_persistence_service import ChunkPersistenceService
+from app.services.indexing_service import DocumentIndexingService
 from app.services.paper_service import PaperService
 from app.storage.file_storage import FileStorage
 from app.vectorstore import QdrantService
@@ -221,20 +222,34 @@ def chunk_repository(db_session: Session) -> ChunkRepository:
 
 
 @pytest.fixture()
+def indexing_service(
+    embedding_service: EmbeddingService,
+    qdrant_service: QdrantService,
+) -> DocumentIndexingService:
+    """Provide a ``DocumentIndexingService`` wired for test uploads."""
+    return DocumentIndexingService(
+        embedding_service=embedding_service,
+        qdrant_service=qdrant_service,
+    )
+
+
+@pytest.fixture()
 def paper_service(
     db_session: Session,
     tmp_storage: FileStorage,
     processor: DocumentProcessor,
     chunker: RecursiveCharacterChunker,
     chunk_persistence_service: ChunkPersistenceService,
+    indexing_service: DocumentIndexingService,
 ) -> PaperService:
-    """Provide a ``PaperService`` wired for upload operations."""
+    """Provide a ``PaperService`` wired for upload operations with indexing."""
     return PaperService(
         session=db_session,
         file_storage=tmp_storage,
         document_processor=processor,
         chunker=chunker,
         chunk_persistence_service=chunk_persistence_service,
+        indexing_service=indexing_service,
     )
 
 

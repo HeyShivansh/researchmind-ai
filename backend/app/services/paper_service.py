@@ -22,6 +22,7 @@ from app.processing import DocumentProcessor, ProcessedDocument
 from app.repositories.paper_repository import PaperRepository
 from app.schemas.paper import PaperCreate
 from app.services.chunk_persistence_service import ChunkPersistenceService
+from app.services.indexing_service import DocumentIndexingService
 from app.storage.file_storage import FileStorage
 from app.storage.validators import PDFValidator
 
@@ -54,6 +55,7 @@ class PaperService:
         document_processor: DocumentProcessor | None = None,
         chunker: BaseChunker | None = None,
         chunk_persistence_service: ChunkPersistenceService | None = None,
+        indexing_service: DocumentIndexingService | None = None,
     ) -> None:
         self._repository = PaperRepository(session)
         self._session = session
@@ -61,6 +63,7 @@ class PaperService:
         self._document_processor = document_processor
         self._chunker = chunker
         self._chunk_persistence_service = chunk_persistence_service
+        self._indexing_service = indexing_service
 
     # ------------------------------------------------------------------
     # Public API
@@ -150,6 +153,50 @@ class PaperService:
         """
         return self._repository.list(skip=skip, limit=limit)
 
+    def count_papers(self) -> int:
+        """
+        Return the total number of papers in the database.
+
+        Returns
+        -------
+        int
+            Total paper count.
+        """
+        return self._repository.count()
+
+    def get_recent_papers(self, limit: int = 5) -> list[Paper]:
+        """
+        Return the most recently uploaded papers.
+
+        Parameters
+        ----------
+        limit : int
+            Maximum number of papers to return. Defaults to 5.
+
+        Returns
+        -------
+        list[Paper]
+            List of papers ordered by created_at descending.
+        """
+        return self._repository.list_recent(limit=limit)
+
+    def total_chunks_count(self) -> int:
+        """
+        Return the total number of chunks across all papers.
+
+        Returns
+        -------
+        int
+            Total chunk count.
+        """
+        if self._chunk_persistence_service is None:
+            return 0
+        total = 0
+        papers = self._repository.list(limit=10000)
+        for paper in papers:
+            total += self._chunk_persistence_service.count_chunks(paper.id)
+        return total
+
     # ------------------------------------------------------------------
     # Upload
     # ------------------------------------------------------------------
@@ -233,6 +280,8 @@ class PaperService:
             doi=doi,
             publication_year=publication_year,
             pdf_path=storage_path,
+            filename=filename,
+            file_size=len(file_bytes),
         )
         # Flush so the paper gets an id, but don't commit yet.
         self._session.flush()
@@ -246,14 +295,36 @@ class PaperService:
                 pdf_on_disk
             )
 
+            # -- Update paper metadata from processing ----------------------
+            instance.page_count = processed.metadata.page_count
+            if processed.metadata.title:
+                instance.title = processed.metadata.title
+            if processed.metadata.author:
+                instance.author = processed.metadata.author
+            if processed.metadata.subject:
+                instance.subject = processed.metadata.subject
+
+            self._session.flush()
+
             # -- Generate chunks --------------------------------------------
             chunks: list[DocumentChunk] = self._chunker.chunk(processed)
 
             # -- Persist chunks ---------------------------------------------
-            self._chunk_persistence_service.persist_chunks(
+            orm_chunks = self._chunk_persistence_service.persist_chunks(
                 paper_id=instance.id,
                 chunks=chunks,
             )
+
+            # -- Update chunk count and status ------------------------------
+            instance.chunk_count = len(chunks)
+            instance.status = "ready"
+
+            # -- Index into Qdrant (embedding + vector upsert) ---------------
+            if self._indexing_service is not None:
+                self._indexing_service.index_document(
+                    paper_id=instance.id,
+                    chunks=orm_chunks,
+                )
 
             # -- Commit atomically ------------------------------------------
             self._session.commit()
@@ -264,6 +335,83 @@ class PaperService:
 
         self._session.refresh(instance)
         return instance
+
+    # ------------------------------------------------------------------
+    # Delete
+    # ------------------------------------------------------------------
+
+    def delete_paper(self, paper_id: UUID) -> None:
+        """
+        Delete a paper, its chunks, and its uploaded file.
+
+        Removes the paper record from the database (cascading to
+        chunks) and deletes the PDF from the storage layer.
+
+        Parameters
+        ----------
+        paper_id : UUID
+            The identifier of the paper to delete.
+
+        Raises
+        ------
+        PaperNotFoundError
+            If no paper with ``paper_id`` exists.
+        """
+        paper = self.get_paper(paper_id)
+        pdf_path = paper.pdf_path
+
+        # Delete from database
+        self._repository.delete(paper_id)
+        self._session.commit()
+
+        # Best-effort deletion of the PDF file
+        if self._file_storage is not None:
+            try:
+                self._file_storage.delete_pdf(pdf_path)
+            except Exception:
+                pass  # Don't fail if the file is already gone
+
+    # ------------------------------------------------------------------
+    # Chunks
+    # ------------------------------------------------------------------
+
+    def get_paper_chunks(
+        self,
+        paper_id: UUID,
+        skip: int = 0,
+        limit: int = 1000,
+    ) -> list:
+        """
+        Retrieve chunks for a paper.
+
+        Parameters
+        ----------
+        paper_id : UUID
+            The paper's unique identifier.
+        skip : int
+            Number of chunks to skip.
+        limit : int
+            Maximum number of chunks to return.
+
+        Returns
+        -------
+        list
+            Ordered list of PaperChunk ORM instances.
+
+        Raises
+        ------
+        PaperNotFoundError
+            If no paper with ``paper_id`` exists.
+        """
+        # Verify paper exists
+        self.get_paper(paper_id)
+
+        if self._chunk_persistence_service is None:
+            return []
+
+        return self._chunk_persistence_service.list_chunks(
+            paper_id, skip=skip, limit=limit
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers

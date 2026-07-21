@@ -1,11 +1,14 @@
 """Google Gemini embedding provider.
 
 Uses the Gemini Embedding API to produce text embeddings.  The
-provider communicates via the ``google-generativeai`` SDK or, if
+provider communicates via the ``google-genai`` SDK or, if
 unavailable, falls back to direct HTTP requests using ``httpx``.
 
-The embedding dimension is **not** hardcoded — it is determined
+The embedding dimension is **not** hardcoded — it is discovered
 from the first API response and cached for subsequent calls.
+An optional ``output_dimensionality`` parameter can be set to
+truncate embeddings to a smaller size (e.g. 768) via Matryoshka
+Representation Learning (MRL).
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ from app.embeddings.models import EmbeddingResult
 # Default model constant
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL: str = "text-embedding-004"
+DEFAULT_MODEL: str = "gemini-embedding-001"
 
 
 class GeminiEmbeddingProvider(BaseEmbeddingProvider):
@@ -37,7 +40,12 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         Google Generative AI API key.
     model : str
         The Gemini embedding model name.
-        Defaults to ``text-embedding-004``.
+        Defaults to ``gemini-embedding-001``.
+    output_dimensionality : int or None
+        Desired output vector dimension via MRL truncation.
+        Set to ``None`` to use the model's default (3072).
+        Defaults to 768 to match the application's Qdrant
+        vector dimension.
 
     Examples
     --------
@@ -51,9 +59,11 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         self,
         api_key: str,
         model: str = DEFAULT_MODEL,
+        output_dimensionality: int | None = 768,
     ) -> None:
         self._api_key = api_key
         self._model = model
+        self._output_dim = output_dimensionality
         # Dimension is discovered lazily from the first API response.
         self._dimension: int | None = None
 
@@ -153,7 +163,7 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
     def _call_api(self, text: str) -> list[float]:
         """Call the Gemini embedding API for a single text.
 
-        Attempts to use the ``google-generativeai`` SDK first, then
+        Attempts to use the ``google-genai`` SDK first, then
         falls back to a direct HTTP request via ``httpx``.
 
         Parameters
@@ -200,30 +210,52 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
             return self._call_api_batch_http(texts)
 
     # ------------------------------------------------------------------
-    # SDK-based calls (preferred)
+    # SDK-based calls (preferred — google-genai)
     # ------------------------------------------------------------------
 
     def _call_api_sdk(self, text: str) -> list[float]:
-        """Embed via the ``google-generativeai`` SDK."""
-        import google.generativeai as genai  # type: ignore[import-untyped]
+        """Embed via the ``google-genai`` SDK.
 
-        genai.configure(api_key=self._api_key)
-        result = genai.embed_content(
-            model=self._model,
-            content=text,
+        Uses ``client.models.embed_content`` with the new
+        ``google.genai`` client library.
+        """
+        from google import genai  # type: ignore[import-untyped]
+        from google.genai import types as genai_types  # type: ignore[import-untyped]
+
+        client = genai.Client(api_key=self._api_key)
+        config = (
+            genai_types.EmbedContentConfig(
+                output_dimensionality=self._output_dim,
+            )
+            if self._output_dim is not None
+            else None
         )
-        return list(result["embedding"])
+        result = client.models.embed_content(
+            model=self._model,
+            contents=text,
+            config=config,
+        )
+        return list(result.embeddings[0].values)
 
     def _call_api_batch_sdk(self, texts: list[str]) -> list[list[float]]:
-        """Batch-embed via the ``google-generativeai`` SDK."""
-        import google.generativeai as genai  # type: ignore[import-untyped]
+        """Batch-embed via the ``google-genai`` SDK."""
+        from google import genai  # type: ignore[import-untyped]
+        from google.genai import types as genai_types  # type: ignore[import-untyped]
 
-        genai.configure(api_key=self._api_key)
-        results = genai.embed_content(
-            model=self._model,
-            content=texts,
+        client = genai.Client(api_key=self._api_key)
+        config = (
+            genai_types.EmbedContentConfig(
+                output_dimensionality=self._output_dim,
+            )
+            if self._output_dim is not None
+            else None
         )
-        return [list(v) for v in results["embedding"]]
+        result = client.models.embed_content(
+            model=self._model,
+            contents=texts,
+            config=config,
+        )
+        return [list(emb.values) for emb in result.embeddings]
 
     # ------------------------------------------------------------------
     # HTTP fallback calls
@@ -237,10 +269,15 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self._model}:embedContent?key={self._api_key}"
         )
-        payload = {"model": f"models/{self._model}", "content": {"parts": [{"text": text}]}}
+        payload: dict = {
+            "model": f"models/{self._model}",
+            "content": {"parts": [{"text": text}]},
+        }
+        if self._output_dim is not None:
+            payload["output_dimensionality"] = self._output_dim
 
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(url, json=payload)
+        with httpx.Client(timeout=30.0) as http_client:
+            response = http_client.post(url, json=payload)
 
         if response.status_code != 200:
             raise EmbeddingProviderError(
@@ -260,18 +297,20 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self._model}:batchEmbedContents?key={self._api_key}"
         )
-        payload = {
-            "requests": [
-                {
-                    "model": f"models/{self._model}",
-                    "content": {"parts": [{"text": t}]},
-                }
-                for t in texts
-            ]
-        }
+        requests = []
+        for t in texts:
+            req: dict = {
+                "model": f"models/{self._model}",
+                "content": {"parts": [{"text": t}]},
+            }
+            if self._output_dim is not None:
+                req["output_dimensionality"] = self._output_dim
+            requests.append(req)
 
-        with httpx.Client(timeout=60.0) as client:
-            response = client.post(url, json=payload)
+        payload = {"requests": requests}
+
+        with httpx.Client(timeout=60.0) as http_client:
+            response = http_client.post(url, json=payload)
 
         if response.status_code != 200:
             raise EmbeddingProviderError(

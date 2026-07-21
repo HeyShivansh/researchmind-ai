@@ -30,7 +30,7 @@ class EmbeddingResult:
     --------
     >>> result = EmbeddingResult(
     ...     vector=[0.1, 0.2, 0.3],
-    ...     model_name="text-embedding-004",
+    ...     model_name="gemini-embedding-001",
     ...     dimension=3,
     ... )
     >>> result.dimension

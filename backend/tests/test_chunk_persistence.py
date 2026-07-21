@@ -502,7 +502,6 @@ class TestRollbackRemovesChunks:
         Uses a separate SQLAlchemy engine connection to verify that
         uncommitted chunks are not visible outside the test transaction.
         """
-        from sqlalchemy import create_engine
 
         paper_id = paper.id
         chunks = [
@@ -520,7 +519,6 @@ class TestRollbackRemovesChunks:
 
         # No commit — use a separate connection to verify nothing is visible.
         from sqlalchemy import text as sa_text
-        from app.database.base import Base
 
         other_conn = test_engine.connect()
         try:

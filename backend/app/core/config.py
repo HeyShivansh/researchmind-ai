@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # -- App metadata -----------------------------------------------------------
     APP_NAME: str = "ResearchMind AI"
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = "1.0.0"
 
     # -- Runtime ----------------------------------------------------------------
     APP_ENV: str = "development"
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
 
     # -- Embeddings --------------------------------------------------------------
     EMBEDDING_PROVIDER: str = "gemini"
-    EMBEDDING_MODEL: str = "text-embedding-004"
+    EMBEDDING_MODEL: str = "gemini-embedding-001"
     EMBEDDING_DIMENSION: int = 768
     GEMINI_API_KEY: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
@@ -66,6 +66,15 @@ class Settings(BaseSettings):
     HYBRID_SEMANTIC_TOP_K: int = 10
     HYBRID_KEYWORD_TOP_K: int = 10
     HYBRID_FUSION_K: int = 60
+
+    # -- CORS ---------------------------------------------------------------------
+    CORS_ORIGINS: str = "http://localhost:3000"
+
+    # -- JWT / Authentication -----------------------------------------------------
+    SECRET_KEY: str = "change-me-to-a-secure-random-secret-key-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
 
 @lru_cache

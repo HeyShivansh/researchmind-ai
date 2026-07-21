@@ -54,6 +54,35 @@ class Paper(Base):
         String(1000),
         nullable=False,
     )
+    filename: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    file_size: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    page_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    chunk_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="processing",
+        nullable=False,
+    )
+    author: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    subject: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=func.now(),

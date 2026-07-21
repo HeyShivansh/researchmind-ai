@@ -22,10 +22,8 @@ import fitz
 import pytest
 from sqlalchemy.orm import Session
 
-from app.chunking import DocumentChunk
 from app.hybrid import HybridRetrievalError, HybridRetrievalService
 from app.models.paper import Paper
-from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.paper_repository import PaperRepository
 from app.services.chunk_persistence_service import ChunkPersistenceService
 from app.services.paper_service import PaperService

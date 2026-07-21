@@ -12,7 +12,7 @@ Run with::
 from __future__ import annotations
 
 from unittest.mock import MagicMock
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from qdrant_client.http import models

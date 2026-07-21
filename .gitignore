@@ -34,3 +34,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Windows NUL device file
+nul
+**/nul

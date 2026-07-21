@@ -1,0 +1,179 @@
+# =============================================================================
+# ResearchMind AI — Production Deployment
+# =============================================================================
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml down
+#   docker compose -f docker-compose.prod.yml logs -f
+#
+# Prerequisites:
+#   - Copy .env.example to .env and configure all variables
+# =============================================================================
+
+name: researchmind
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — Primary relational database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: researchmind-postgres
+    restart: unless-stopped
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-researchmind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-researchmind}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-researchmind} -d ${POSTGRES_DB:-researchmind}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_MEM_LIMIT:-512m}
+        reservations:
+          memory: 256m
+    networks:
+      - researchmind-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------------------
+  # Qdrant — Vector database for semantic search
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:v1.11.0
+    container_name: researchmind-qdrant
+    restart: unless-stopped
+    expose:
+      - "6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__TELEMETRY__DISABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "(echo -n 'GET /health HTTP/1.1\r\nhost: localhost\r\n'; echo -e '\r\n') | timeout 1 sh -c 'cat > /dev/tcp/localhost/6333' && echo OK || echo FAIL"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - researchmind-network
+
+  # ---------------------------------------------------------------------------
+  # Backend — FastAPI Application
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: researchmind-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+      HOST: "0.0.0.0"
+      PORT: 8000
+      POSTGRES_USER: ${POSTGRES_USER:-researchmind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-researchmind}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME:-researchmind}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      STORAGE_ROOT: /app/storage
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    volumes:
+      - paper_storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${BACKEND_MEM_LIMIT:-512m}
+        reservations:
+          memory: 256m
+    networks:
+      - researchmind-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------------------
+  # Frontend — Next.js Application
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: researchmind-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_TELEMETRY_DISABLED: 1
+    depends_on:
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${FRONTEND_MEM_LIMIT:-512m}
+        reservations:
+          memory: 256m
+    networks:
+      - researchmind-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ---------------------------------------------------------------------------
+# Networking — internal bridge network
+# ---------------------------------------------------------------------------
+networks:
+  researchmind-network:
+    name: researchmind-network
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Persistent storage
+# ---------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    name: researchmind-postgres-data
+  qdrant_data:
+    name: researchmind-qdrant-data
+  paper_storage:
+    name: researchmind-paper-storage
